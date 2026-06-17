@@ -2,8 +2,7 @@ name: Build Flutter Engine
 
 on: workflow_dispatch
 
-permissions:
-  contents: write
+permissions: write-all
 
 jobs:
   build-engine:
