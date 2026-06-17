@@ -2,6 +2,8 @@ name: Build Flutter Engine
 
 on: workflow_dispatch
 
+permissions: write-all
+
 jobs:
   build-engine:
     runs-on: windows-2022
@@ -49,6 +51,12 @@ jobs:
           } else {
             Write-Error "Build output files not found!"
           }
+
+      - name: Upload zip to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-release
+          path: windows-x64-release.zip
 
       # The file will be uploaded to the release page of the repository, and the tag is the branch name of the currently executing workflow.
       - name: Upload files to a GitHub release
