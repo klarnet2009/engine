@@ -4,7 +4,7 @@ on: workflow_dispatch
 
 jobs:
   build-engine:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
       - name: Install Depot Tools
@@ -13,7 +13,7 @@ jobs:
       - name: Set environment variables
         run: |
           echo "DEPOT_TOOLS_WIN_TOOLCHAIN=0" >> $env:GITHUB_ENV
-          echo "GYP_MSVS_OVERRIDE_PATH=C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise" >> $env:GITHUB_ENV
+          echo "GYP_MSVS_OVERRIDE_PATH=C:\Program Files\Microsoft Visual Studio\2022\Enterprise" >> $env:GITHUB_ENV
           echo "WINDOWSSDKDIR=C:\Program Files (x86)\Windows Kits\10" >> $env:GITHUB_ENV
 
       - name: Fetch Flutter
@@ -22,7 +22,7 @@ jobs:
           cd engine
           
           fetch flutter
-          git -C src/flutter checkout 3.24.5
+          git -C src/flutter checkout 3.41.0
 
           $filePath = "src/flutter/shell/platform/windows/flutter_windows_engine.cc"
           (Get-Content $filePath) -replace 'ClearCurrent', 'MakeCurrent' | Set-Content $filePath
@@ -33,22 +33,6 @@ jobs:
           git -C src/flutter status
           
           gclient sync -D
-
-          # fix https://github.com/rustdesk/rustdesk/issues/10085
-          $filePath = "revert_to_gethostname.zip"
-          Invoke-WebRequest -Uri "https://dart-review.googlesource.com/changes/sdk~320620/revisions/2/patch?zip&path=runtime%2Fbin%2Fplatform_win.cc" -OutFile $filePath
-          Expand-Archive -Path $filePath -DestinationPath "."
-          git apply --directory="src/flutter/third_party/dart" 987dbe0.diff
-
-          # fix https://github.com/dart-lang/sdk/commit/34213ba60578e46fc2455c5a56b09d9efabc532b#diff-8b21f02c32c6647079e2c07e7c6ddfff74ac69f81331f9ed67429125e9fe16aa
-          $filePath = "0001-Revert-win-unwinding-Remove-Windows7-handling-of-unw.patch"
-          Invoke-WebRequest -Uri "https://github.com/rustdesk/engine/raw/refs/heads/main/0001-Revert-win-unwinding-Remove-Windows7-handling-of-unw.patch" -OutFile $filePath
-          git apply --directory="src/flutter/third_party/dart" $filePath
-
-          # fix https://dart-review.googlesource.com/c/sdk/+/335940/22/runtime/bin/file_win.cc#642
-          $filePath = "0001-revert-file_win.cc.patch"
-          Invoke-WebRequest -Uri "https://github.com/rustdesk/engine/raw/refs/heads/main/0001-revert-file_win.cc.patch" -OutFile $filePath
-          git apply --directory="src/flutter/third_party/dart" $filePath
           
           # Compiling the Flutter engine
           cd src
