@@ -4,12 +4,12 @@ on: workflow_dispatch
 
 permissions: write-all
 
-# Pin to the exact engine revision that stock Flutter 3.41.0 ships, so the
+# Pin to the exact engine revision that stock Flutter 3.44.7 ships, so the
 # resulting gen_snapshot.exe / flutter_windows.dll are ABI-compatible with the
-# 3.41.0 SDK's frontend_server (Dart 3.11.0). Building the wrong revision yields
+# 3.44.7 SDK's frontend_server (Dart 3.12.2). Building the wrong revision yields
 # a "Invalid kernel binary format version" failure during `flutter build windows`.
 env:
-  ENGINE_REVISION: "3452d735bd"
+  ENGINE_REVISION: "69c8c61792f04cc809dfef0c910414fb9afc06cd"
 
 jobs:
   build-engine:
@@ -38,7 +38,7 @@ jobs:
           # Make sure the pinned engine revision is available, then check it out.
           git -C src/flutter fetch --tags --force origin
           git -C src/flutter checkout $env:ENGINE_REVISION
-          if ($LASTEXITCODE -ne 0) { throw "Failed to checkout engine revision $env:ENGINE_REVISION (must match stock Flutter 3.41.0)" }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to checkout engine revision $env:ENGINE_REVISION (must match stock Flutter 3.44.7)" }
 
           # Verify we are exactly on the intended engine revision.
           $head = (git -C src/flutter rev-parse HEAD).Trim()
@@ -100,4 +100,4 @@ jobs:
           file: windows-x64-release.zip
           tag: ${{ github.ref }}
           overwrite: true
-          body: "Flutter Engine Release (pinned to engine revision 3452d735bd = stock Flutter 3.41.0, with #155685 multi-window fix)"
+          body: "Flutter Engine Release (pinned to engine revision 69c8c617 = stock Flutter 3.44.7, with #155685 multi-window fix)"
