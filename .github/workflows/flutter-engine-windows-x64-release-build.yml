@@ -4,6 +4,13 @@ on: workflow_dispatch
 
 permissions: write-all
 
+# Pin to the exact engine revision that stock Flutter 3.41.0 ships, so the
+# resulting gen_snapshot.exe / flutter_windows.dll are ABI-compatible with the
+# 3.41.0 SDK's frontend_server (Dart 3.11.0). Building the wrong revision yields
+# a "Invalid kernel binary format version" failure during `flutter build windows`.
+env:
+  ENGINE_REVISION: "3452d735bd"
+
 jobs:
   build-engine:
     runs-on: windows-2022
@@ -19,29 +26,56 @@ jobs:
           echo "WINDOWSSDKDIR=C:\Program Files (x86)\Windows Kits\10" >> $env:GITHUB_ENV
           echo "CL=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH" >> $env:GITHUB_ENV
 
-      - name: Fetch Flutter
+      - name: Fetch Flutter engine at pinned revision
         run: |
+          $ErrorActionPreference = "Stop"
           mkdir engine
           cd engine
-          
+
           fetch flutter
-          git -C src/flutter checkout 3.41.0
+          if ($LASTEXITCODE -ne 0) { throw "fetch flutter failed" }
 
+          # Make sure the pinned engine revision is available, then check it out.
+          git -C src/flutter fetch --tags --force origin
+          git -C src/flutter checkout $env:ENGINE_REVISION
+          if ($LASTEXITCODE -ne 0) { throw "Failed to checkout engine revision $env:ENGINE_REVISION (must match stock Flutter 3.41.0)" }
+
+          # Verify we are exactly on the intended engine revision.
+          $head = (git -C src/flutter rev-parse HEAD).Trim()
+          Write-Host "engine src/flutter HEAD = $head"
+          if (-not $head.StartsWith($env:ENGINE_REVISION)) {
+            throw "Checked-out engine HEAD ($head) does not match expected $env:ENGINE_REVISION"
+          }
+
+          # --- Patch: fix flutter/flutter#155685 (Windows multi-window EGL context
+          #     crash on window create/close). ClearCurrent -> MakeCurrent. ---
           $filePath = "src/flutter/shell/platform/windows/flutter_windows_engine.cc"
-          (Get-Content $filePath) -replace 'ClearCurrent', 'MakeCurrent' | Set-Content $filePath
+          if (Test-Path $filePath) {
+            (Get-Content $filePath) -replace 'ClearCurrent', 'MakeCurrent' | Set-Content $filePath
+            Write-Host "Applied #155685 ClearCurrent->MakeCurrent patch to $filePath"
+          } else {
+            Write-Warning "Patch target $filePath not found at revision $env:ENGINE_REVISION; skipping #155685 patch"
+          }
 
+          # --- Patch: MSVC needs <string> before <string_view> in hex_codec.h ---
           $filePath = "src/flutter/fml/hex_codec.h"
-          (Get-Content $filePath | ForEach-Object { if ($_ -eq '#include <string_view>') {"#include <string>`n" + $_} else {$_}}) | Set-Content $filePath
+          if (Test-Path $filePath) {
+            (Get-Content $filePath | ForEach-Object { if ($_ -eq '#include <string_view>') {"#include <string>`n" + $_} else {$_}}) | Set-Content $filePath
+            Write-Host "Applied hex_codec.h <string> include fix"
+          }
 
           git -C src/flutter status
-          
+
           gclient sync -D
-          
+          if ($LASTEXITCODE -ne 0) { throw "gclient sync failed" }
+
           # Compiling the Flutter engine
           cd src
           python .\flutter\tools\gn --runtime-mode=release --no-prebuilt-dart-sdk
+          if ($LASTEXITCODE -ne 0) { throw "gn failed" }
           ninja -C .\out\host_release
-          
+          if ($LASTEXITCODE -ne 0) { throw "ninja build failed" }
+
           # Check and compress files
           $outputPath = "${{ github.workspace }}\windows-x64-release.zip"
           $filesToCompress = Get-ChildItem -Path .\out\host_release\ | Where-Object { $_.Name -in @("flutter_windows.dll", "flutter_windows.dll.pdb", "flutter_windows.dll.exp", "flutter_windows.dll.lib", "flutter_windows.h", "flutter_export.h", "flutter_messenger.h", "flutter_plugin_registrar.h", "flutter_texture_registrar.h", "license.windows_flutter.md", "gen_snapshot.exe") }
@@ -66,4 +100,4 @@ jobs:
           file: windows-x64-release.zip
           tag: ${{ github.ref }}
           overwrite: true
-          body: "Flutter Engine Release"
+          body: "Flutter Engine Release (pinned to engine revision 3452d735bd = stock Flutter 3.41.0, with #155685 multi-window fix)"
